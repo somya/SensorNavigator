@@ -3,4 +3,7 @@
 
 <!-- TODO: Remove or change this placeholder text -->
     <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="ble_not_supported">Bluetooth LE is not supported by this app.</string>
+    <string name="ble_scanning">Bluetooth LE: Scanning for devices.</string>
+    <string name="ble_scanning_stop">Bluetooth LE: Stopped scanning for devices.</string>
 </resources>
