@@ -1,14 +1,10 @@
 package com.spaceapps.sensornavigator;
 
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothManager;
-import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
 import android.content.IntentSender.SendIntentException;
-import android.content.pm.PackageManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v7.app.ActionBarActivity;
@@ -20,6 +16,12 @@ import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.wearable.*;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 
 public class MainActivity extends ActionBarActivity
@@ -46,10 +48,98 @@ public class MainActivity extends ActionBarActivity
 	 * waiting for resolution intent to return.
 	 */
 	private boolean mIsInResolution;
-	private BluetoothAdapter m_btAdapter;
+	//	private BluetoothAdapter m_btAdapter;
 
 	private boolean mScanning;
-	private Handler mHandler = new Handler();
+	private             Handler mHandler   = new Handler();
+	public static final String  SENSOR_URL = "http://192.168.0.109:3000/sensors";
+
+	Runnable m_getSensorDataRunnable = new Runnable()
+	{
+		@Override public void run()
+		{
+			(new GetSensorDataTask()).execute( SENSOR_URL );
+
+//			// check again in 1 second.
+			mHandler.postDelayed(
+				m_getSensorDataRunnable, SCAN_PERIOD
+			);
+		}
+	};
+
+	class GetSensorDataTask extends AsyncTask<String, Void, JSONObject>
+	{
+		public static final int SENSOR_THREASHOLD = 400;
+		private Exception exception;
+
+		protected JSONObject doInBackground( String... urls )
+		{
+			HttpURLConnection urlConnection = null;
+			try
+			{
+				urlConnection = (HttpURLConnection) new URL( SENSOR_URL ).openConnection();
+
+				InputStream in = new BufferedInputStream( urlConnection.getInputStream() );
+
+				BufferedReader streamReader = new BufferedReader( new InputStreamReader( in, "UTF-8" ) );
+				StringBuilder responseStrBuilder = new StringBuilder();
+
+				String inputStr;
+				while ( ( inputStr = streamReader.readLine() ) != null )
+				{
+					responseStrBuilder.append( inputStr );
+				}
+				final String json = responseStrBuilder.toString();
+				Log.d( "MainActivity", String.format( "doInBackground : json = %s", json ) );
+
+				return new JSONObject( json );
+
+			}
+			catch ( IOException | JSONException e )
+
+			{
+				e.printStackTrace();
+			}
+			finally
+			{
+				urlConnection.disconnect();
+			}
+
+			return null;
+		}
+
+		protected void onPostExecute( JSONObject feed )
+		{
+			// TODO: check this.exception
+			// TODO: do something with the feed
+
+			if ( null == feed )
+			{
+				return;
+			}
+
+			try
+			{
+				if ( feed.getInt( "sensor1" ) > SENSOR_THREASHOLD )
+				{
+					notifyWearables( "sensor1" );
+				}
+				if ( feed.getInt( "sensor2" ) > SENSOR_THREASHOLD )
+				{
+					notifyWearables( "sensor2" );
+				}
+				if ( feed.getInt( "sensor3" ) > SENSOR_THREASHOLD )
+				{
+					notifyWearables( "sensor3" );
+				}
+			}
+			catch ( JSONException e )
+			{
+				Log.e( "MainActivity", "Error in onPostExecute ([feed])", e );
+			}
+
+		}
+	}
 
 
 	/**
@@ -67,7 +157,7 @@ public class MainActivity extends ActionBarActivity
 		{
 			getSupportFragmentManager().beginTransaction().add( R.id.main_container, new MainFragment() ).commit();
 		}
-
+/*
 		BluetoothManager btManager = (BluetoothManager) getSystemService( Context.BLUETOOTH_SERVICE );
 
 		m_btAdapter = btManager.getAdapter();
@@ -83,17 +173,8 @@ public class MainActivity extends ActionBarActivity
 		{
 			Toast.makeText( this, R.string.ble_not_supported, Toast.LENGTH_SHORT ).show();
 			finish();
-		}
+		}*/
 	}
-
-	private BluetoothAdapter.LeScanCallback leScanCallback = new BluetoothAdapter.LeScanCallback()
-	{
-		@Override public void onLeScan( final BluetoothDevice device, final int rssi, final byte[] scanRecord )
-		{
-			// your implementation here
-			Log.d( "MainActivity", String.format( "onLeScan : device = %s", device.getName() ) );
-		}
-	};
 
 
 	/**
@@ -114,7 +195,7 @@ public class MainActivity extends ActionBarActivity
 		}
 		mGoogleApiClient.connect();
 
-//		scanLeDevice( true );
+		fetchSensorData( true );
 
 	}
 
@@ -129,37 +210,30 @@ public class MainActivity extends ActionBarActivity
 			mGoogleApiClient.disconnect();
 		}
 
+		fetchSensorData( false );
+
 		super.onStop();
 	}
 
-	// Stops scanning after 10 seconds.
-	private static final long SCAN_PERIOD = 10000;
+	// Scan every 1 seconds.
+	private static final long SCAN_PERIOD = 1000;
 
-	private void scanLeDevice( final boolean enable )
+	private void fetchSensorData( final boolean enable )
 	{
 		if ( enable )
 		{
 			// Stops scanning after a pre-defined scan period.
 			mHandler.postDelayed(
-				new Runnable()
-				{
-					@Override public void run()
-					{
-						mScanning = false;
-						m_btAdapter.stopLeScan( leScanCallback );
-						Toast.makeText( MainActivity.this, R.string.ble_scanning_stop, Toast.LENGTH_SHORT ).show();
-					}
-				}, SCAN_PERIOD
+				m_getSensorDataRunnable, SCAN_PERIOD
 			);
 
 			mScanning = true;
-			m_btAdapter.startLeScan( leScanCallback );
 			Toast.makeText( this, R.string.ble_scanning, Toast.LENGTH_SHORT ).show();
 		}
 		else
 		{
 			mScanning = false;
-			m_btAdapter.stopLeScan( leScanCallback );
+			mHandler.removeCallbacks( m_getSensorDataRunnable );
 			Toast.makeText( this, R.string.ble_scanning_stop, Toast.LENGTH_SHORT ).show();
 		}
 	}
@@ -236,6 +310,7 @@ public class MainActivity extends ActionBarActivity
 					Log.d( TAG, "Your data is changed" );
 				}
 			}
+
 		);
 
 		Wearable.NodeApi.getLocalNode( mGoogleApiClient ).setResultCallback(
@@ -255,6 +330,12 @@ public class MainActivity extends ActionBarActivity
 	{
 		// TODO Send message to watch.
 
+		notifyWearables( "/example/test" );
+
+	}
+
+	private void notifyWearables( final String path )
+	{
 		Wearable.NodeApi.getConnectedNodes( mGoogleApiClient ).setResultCallback(
 			new ResultCallback<NodeApi.GetConnectedNodesResult>()
 			{
@@ -268,10 +349,7 @@ public class MainActivity extends ActionBarActivity
 
 
 						Wearable.MessageApi.sendMessage(
-							mGoogleApiClient,
-							node.getId(),
-							"/example/test",
-							null
+							mGoogleApiClient, node.getId(), path, null
 						).setResultCallback(
 							new ResultCallback<MessageApi.SendMessageResult>()
 							{

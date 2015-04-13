@@ -97,16 +97,27 @@ public class MainActivity extends Activity
 		Wearable.MessageApi.addListener(
 			mGoogleApiClient, new MessageApi.MessageListener()
 			{
-				@Override public void onMessageReceived( MessageEvent messageEvent )
+				@Override public void onMessageReceived( final MessageEvent messageEvent )
 				{
 					Log.d( TAG, "You have a message from " + messageEvent.getPath() );
-					mTextView.setText( "4. Message From : " + messageEvent.getPath() );
 
-					Vibrator vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
-					long[] vibrationPattern = {0, 500, 50, 300};
-					//-1 - don't repeat
-					final int indexInPatternToRepeat = -1;
-					vibrator.vibrate( vibrationPattern, indexInPatternToRepeat );
+					runOnUiThread(
+						new Runnable()
+						{
+							@Override public void run()
+							{
+								mTextView.setText( "4. Getting close on: " + messageEvent.getPath() );
+
+								Vibrator vibrator = (Vibrator) getSystemService( VIBRATOR_SERVICE );
+								long[] vibrationPattern = {0, 500, 50, 300};
+								//-1 - don't repeat
+								final int indexInPatternToRepeat = -1;
+								vibrator.vibrate( vibrationPattern, indexInPatternToRepeat );
+							}
+						}
+					);
+
+
 				}
 			}
 		);
